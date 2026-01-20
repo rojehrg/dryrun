@@ -415,11 +415,13 @@ export default function Home() {
                     <p className="text-xs text-gray-400">
                       {new Date(run.createdAt).toLocaleString()}
                     </p>
-                    {run.archetypeId.startsWith('custom-') && (
-                      <span className="text-xs px-1.5 py-0.5 bg-primary-100 text-primary-700 rounded">
-                        Custom
-                      </span>
-                    )}
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      run.archetypeId.startsWith('custom-')
+                        ? 'bg-primary-100 text-primary-700'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {run.archetypeName || run.archetypeId}
+                    </span>
                   </div>
                 </button>
               ))}
