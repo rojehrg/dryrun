@@ -1,6 +1,11 @@
 import { config } from 'dotenv';
-import { resolve, join } from 'path';
+import { resolve, join, dirname } from 'path';
 import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Load .env from project root
 config({ path: resolve(process.cwd(), '../../.env') });
@@ -38,31 +43,41 @@ async function main() {
     res.json({ status: 'ok' });
   });
 
-  // In production, serve the frontend static files
-  if (isProduction) {
-    // Try multiple possible paths for the frontend dist
-    const possiblePaths = [
-      resolve(process.cwd(), 'packages/web/dist'),  // Docker: /app/packages/web/dist
-      resolve(process.cwd(), '../web/dist'),         // Local from packages/server
-      resolve(__dirname, '../../web/dist'),          // Relative to compiled JS
-    ];
+  // Try multiple possible paths for the frontend dist
+  const possiblePaths = [
+    resolve(process.cwd(), 'packages/web/dist'),  // Docker: /app/packages/web/dist
+    resolve(process.cwd(), '../web/dist'),         // Local from packages/server
+    resolve(__dirname, '../../web/dist'),          // Relative to compiled JS
+    resolve(__dirname, '../../../web/dist'),       // Another relative option
+  ];
 
-    const webDistPath = possiblePaths.find(p => existsSync(p));
+  console.log('🔍 Looking for frontend. CWD:', process.cwd());
+  console.log('🔍 __dirname:', __dirname);
+  console.log('🔍 Checking paths:', possiblePaths);
 
-    if (webDistPath) {
-      app.use(express.static(webDistPath));
+  const webDistPath = possiblePaths.find(p => {
+    const exists = existsSync(p);
+    console.log(`   ${p}: ${exists ? '✓ FOUND' : '✗ not found'}`);
+    return exists;
+  });
 
-      // SPA fallback - serve index.html for all non-API routes
-      app.get('*', (req, res) => {
-        if (!req.path.startsWith('/api') && !req.path.startsWith('/screenshots')) {
-          res.sendFile(join(webDistPath, 'index.html'));
-        }
-      });
+  if (webDistPath) {
+    app.use(express.static(webDistPath));
 
-      console.log('📦 Serving frontend from', webDistPath);
-    } else {
-      console.warn('⚠️ Frontend dist not found. Tried:', possiblePaths);
-    }
+    // SPA fallback - serve index.html for all non-API routes
+    app.get('*', (req, res) => {
+      if (!req.path.startsWith('/api') && !req.path.startsWith('/screenshots')) {
+        res.sendFile(join(webDistPath, 'index.html'));
+      }
+    });
+
+    console.log('📦 Serving frontend from', webDistPath);
+  } else {
+    console.warn('⚠️ Frontend dist not found!');
+    // Serve a fallback message
+    app.get('/', (_req, res) => {
+      res.send('Dryrun API is running. Frontend not found. Check deployment logs.');
+    });
   }
 
   app.listen(PORT, () => {
