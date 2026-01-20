@@ -49,15 +49,15 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy built files and dependencies
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/
-COPY --from=builder /app/packages/server/dist ./packages/server/dist
-COPY --from=builder /app/packages/server/package.json ./packages/server/
-COPY --from=builder /app/packages/server/node_modules ./packages/server/node_modules
-COPY --from=builder /app/packages/web/dist ./packages/web/dist
+# Copy the entire built monorepo (simpler and ensures all links work)
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-lock.yaml ./
+COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/shared ./packages/shared
+COPY --from=builder /app/packages/server ./packages/server
+COPY --from=builder /app/packages/web/dist ./packages/web/dist
+COPY --from=builder /app/packages/web/package.json ./packages/web/
 
 # Install Playwright browsers
 RUN cd packages/server && npx playwright install chromium
@@ -73,5 +73,5 @@ ENV DATABASE_PATH=/app/data/dryrun.db
 # Expose port
 EXPOSE 3000
 
-# Start the server (serves both API and static files)
+# Start the server
 CMD ["node", "packages/server/dist/index.js"]
