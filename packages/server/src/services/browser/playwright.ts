@@ -112,10 +112,22 @@ export class BrowserService {
           document.querySelectorAll(selector).forEach((el) => {
             if (!isVisible(el)) return;
 
-            const text = el.innerText?.trim() ||
-              el.getAttribute('placeholder') ||
-              el.getAttribute('aria-label') ||
-              el.getAttribute('title') || '';
+            // For inputs, prioritize placeholder and aria-label
+            const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+            const placeholder = el.getAttribute('placeholder');
+            const ariaLabel = el.getAttribute('aria-label');
+            const name = el.getAttribute('name');
+            const inputType = el.getAttribute('type');
+
+            let text = '';
+            if (isInput) {
+              // For inputs, use placeholder or aria-label as primary identifier
+              text = placeholder || ariaLabel || name || inputType || 'input';
+            } else {
+              text = el.innerText?.trim() ||
+                ariaLabel ||
+                el.getAttribute('title') || '';
+            }
 
             if (!text || seen.has(text)) return;
             seen.add(text);
@@ -127,8 +139,9 @@ export class BrowserService {
               selector: getSelector(el),
               attributes: {
                 href: el.getAttribute('href') || undefined,
-                type: el.getAttribute('type') || undefined,
-                name: el.getAttribute('name') || undefined,
+                type: inputType || undefined,
+                name: name || undefined,
+                placeholder: placeholder || undefined,
               },
               boundingBox: {
                 x: Math.round(rect.x),
@@ -170,29 +183,84 @@ export class BrowserService {
   async click(selector: string): Promise<void> {
     if (!this.page) throw new Error('Browser not launched');
 
-    try {
+    const strategies = [
       // Try exact selector first
-      await this.page.click(selector, { timeout: 5000 });
-    } catch {
-      // Fall back to text-based selector
-      const textSelector = `text="${selector}"`;
-      await this.page.click(textSelector, { timeout: 5000 });
+      () => this.page!.click(selector, { timeout: 3000 }),
+      // Try as text content
+      () => this.page!.click(`text="${selector}"`, { timeout: 3000 }),
+      // Try as partial text (case insensitive)
+      () => this.page!.click(`text=${selector}`, { timeout: 3000 }),
+      // Try role-based
+      () => this.page!.getByRole('button', { name: selector }).click({ timeout: 3000 }),
+      () => this.page!.getByRole('link', { name: selector }).click({ timeout: 3000 }),
+      // Try placeholder/label
+      () => this.page!.getByPlaceholder(selector).click({ timeout: 3000 }),
+      () => this.page!.getByLabel(selector).click({ timeout: 3000 }),
+    ];
+
+    let lastError: Error | null = null;
+    for (const strategy of strategies) {
+      try {
+        await strategy();
+        // Wait for navigation or network activity to settle
+        await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+        return;
+      } catch (e) {
+        lastError = e as Error;
+      }
     }
 
-    // Wait for navigation or network activity to settle
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    throw new Error(`Could not click "${selector}": ${lastError?.message || 'element not found'}`);
   }
 
   async type(selector: string, text: string): Promise<void> {
     if (!this.page) throw new Error('Browser not launched');
 
-    try {
-      await this.page.fill(selector, text, { timeout: 5000 });
-    } catch {
-      // Try clicking first then typing
-      await this.page.click(selector, { timeout: 5000 });
-      await this.page.keyboard.type(text);
+    const strategies = [
+      // Try exact selector
+      () => this.page!.fill(selector, text, { timeout: 3000 }),
+      // Try common input selectors
+      () => this.page!.fill(`input[name="${selector}"]`, text, { timeout: 3000 }),
+      () => this.page!.fill(`input[placeholder*="${selector}" i]`, text, { timeout: 3000 }),
+      () => this.page!.fill(`textarea[placeholder*="${selector}" i]`, text, { timeout: 3000 }),
+      // Try by label
+      () => this.page!.getByLabel(selector).fill(text, { timeout: 3000 }),
+      // Try by placeholder
+      () => this.page!.getByPlaceholder(selector).fill(text, { timeout: 3000 }),
+      // Try by role
+      () => this.page!.getByRole('textbox', { name: selector }).fill(text, { timeout: 3000 }),
+      () => this.page!.getByRole('searchbox').fill(text, { timeout: 3000 }),
+      // Try common search input patterns
+      () => this.page!.fill('input[type="search"]', text, { timeout: 3000 }),
+      () => this.page!.fill('input[name="search"]', text, { timeout: 3000 }),
+      () => this.page!.fill('input[name="q"]', text, { timeout: 3000 }),
+      () => this.page!.fill('#searchInput', text, { timeout: 3000 }),
+      () => this.page!.fill('[role="searchbox"]', text, { timeout: 3000 }),
+    ];
+
+    let lastError: Error | null = null;
+    for (const strategy of strategies) {
+      try {
+        await strategy();
+        return;
+      } catch (e) {
+        lastError = e as Error;
+      }
     }
+
+    // Last resort: click and type manually
+    try {
+      const input = await this.page.$('input:visible, textarea:visible, [contenteditable="true"]:visible');
+      if (input) {
+        await input.click();
+        await this.page.keyboard.type(text);
+        return;
+      }
+    } catch {
+      // Continue to error
+    }
+
+    throw new Error(`Could not type into "${selector}": ${lastError?.message || 'input not found'}`);
   }
 
   async scroll(direction: 'up' | 'down', amount: number = 300): Promise<void> {

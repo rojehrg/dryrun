@@ -13,12 +13,19 @@ const FOCUS_AREAS: { id: FrictionCategory; label: string; description: string }[
   { id: 'accessibility', label: 'Accessibility', description: 'A11y compliance' },
 ];
 
+const DEVICE_PRESETS = [
+  { id: 'mobile', label: 'Mobile', icon: '📱', viewport: '390×844', description: 'iPhone 14 Pro' },
+  { id: 'tablet', label: 'Tablet', icon: '📲', viewport: '1024×768', description: 'iPad' },
+  { id: 'desktop', label: 'Desktop', icon: '🖥️', viewport: '1440×900', description: 'Laptop/Monitor' },
+] as const;
+
 export default function Home() {
   const navigate = useNavigate();
   const [url, setUrl] = useState('');
   const [goal, setGoal] = useState('');
   const [archetypeId, setArchetypeId] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
 
   // Custom archetype form state
   const [customName, setCustomName] = useState('');
@@ -68,7 +75,8 @@ export default function Home() {
       createRunMutation.mutate({ url, goal, customArchetype });
     } else {
       if (!archetypeId) return;
-      createRunMutation.mutate({ url, goal, archetypeId });
+      // Include device override for preset archetypes
+      createRunMutation.mutate({ url, goal, archetypeId, device: selectedDevice });
     }
   };
 
@@ -156,6 +164,34 @@ export default function Home() {
               />
             </div>
 
+            {/* Device Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Device
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {DEVICE_PRESETS.map((device) => (
+                  <button
+                    key={device.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDevice(device.id);
+                      if (isCustom) setCustomDevice(device.id);
+                    }}
+                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                      (isCustom ? customDevice : selectedDevice) === device.id
+                        ? 'border-primary-500 bg-primary-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-2xl block mb-1">{device.icon}</span>
+                    <span className="text-sm font-medium block">{device.label}</span>
+                    <span className="text-xs text-gray-500">{device.viewport}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label
                 htmlFor="archetype"
@@ -215,34 +251,18 @@ export default function Home() {
               <div className="p-4 bg-primary-50 rounded-lg space-y-4 border border-primary-200">
                 <h3 className="font-medium text-primary-900">Custom Archetype</h3>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Name
-                    </label>
-                    <input
-                      type="text"
-                      value={customName}
-                      onChange={(e) => setCustomName(e.target.value)}
-                      placeholder="e.g., Budget-Conscious Shopper"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                      required={isCustom}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Device
-                    </label>
-                    <select
-                      value={customDevice}
-                      onChange={(e) => setCustomDevice(e.target.value as 'mobile' | 'tablet' | 'desktop')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                    >
-                      <option value="mobile">Mobile (390x844)</option>
-                      <option value="tablet">Tablet (1024x768)</option>
-                      <option value="desktop">Desktop (1440x900)</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Persona Name
+                  </label>
+                  <input
+                    type="text"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="e.g., Budget-Conscious Shopper"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                    required={isCustom}
+                  />
                 </div>
 
                 <div>

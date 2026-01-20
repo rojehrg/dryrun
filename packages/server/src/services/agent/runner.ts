@@ -94,12 +94,9 @@ export class AgentRunner {
       await this.browser.navigate(run.url);
       this.interactionTracker.navigationHistory.push(run.url);
 
-      // Log initial navigation
-      const navEvent = this.createAndSaveEvent(run.id, 'navigation', { url: run.url });
+      // Log initial navigation with screenshot
+      const navEvent = await this.createEventWithScreenshot(run.id, 'navigation', { url: run.url });
       callbacks?.onEvent?.(navEvent);
-
-      // Capture initial screenshot
-      await this.captureEventScreenshot(run.id, navEvent.id);
 
       // Main agent loop
       while (stepCount < MAX_STEPS && !this.shouldStop) {
@@ -207,20 +204,18 @@ export class AgentRunner {
 
         if (action.type === 'done') {
           goalReached = true;
-          const doneEvent = this.createAndSaveEvent(run.id, 'goal_reached', {
+          const doneEvent = await this.createEventWithScreenshot(run.id, 'goal_reached', {
             reasoning: action.reasoning,
           });
-          await this.captureEventScreenshot(run.id, doneEvent.id);
           callbacks?.onEvent?.(doneEvent);
           break;
         }
 
         if (action.type === 'stuck') {
           abandonReason = action.reasoning || 'Agent got stuck';
-          const stuckEvent = this.createAndSaveEvent(run.id, 'abandoned', {
+          const stuckEvent = await this.createEventWithScreenshot(run.id, 'abandoned', {
             reason: abandonReason,
           });
-          await this.captureEventScreenshot(run.id, stuckEvent.id);
           callbacks?.onEvent?.(stuckEvent);
           break;
         }
@@ -467,11 +462,10 @@ export class AgentRunner {
       case 'click': {
         if (!action.target) throw new Error('Click action requires target');
         await this.browser.click(action.target);
-        const event = this.createAndSaveEvent(runId, 'click', {
+        const event = await this.createEventWithScreenshot(runId, 'click', {
           target: action.target,
           reasoning: action.reasoning,
         });
-        await this.captureEventScreenshot(runId, event.id);
         callbacks?.onEvent?.(event);
         break;
       }
@@ -479,23 +473,21 @@ export class AgentRunner {
       case 'type': {
         if (!action.target || !action.value) throw new Error('Type action requires target and value');
         await this.browser.type(action.target, action.value);
-        const event = this.createAndSaveEvent(runId, 'type', {
+        const event = await this.createEventWithScreenshot(runId, 'type', {
           target: action.target,
           value: action.value,
           reasoning: action.reasoning,
         });
-        await this.captureEventScreenshot(runId, event.id);
         callbacks?.onEvent?.(event);
         break;
       }
 
       case 'scroll': {
         await this.browser.scroll('down');
-        const event = this.createAndSaveEvent(runId, 'scroll', {
+        const event = await this.createEventWithScreenshot(runId, 'scroll', {
           direction: 'down',
           reasoning: action.reasoning,
         });
-        await this.captureEventScreenshot(runId, event.id);
         callbacks?.onEvent?.(event);
         break;
       }
@@ -503,11 +495,10 @@ export class AgentRunner {
       case 'navigate': {
         if (!action.target) throw new Error('Navigate action requires target URL');
         await this.browser.navigate(action.target);
-        const event = this.createAndSaveEvent(runId, 'navigation', {
+        const event = await this.createEventWithScreenshot(runId, 'navigation', {
           url: action.target,
           reasoning: action.reasoning,
         });
-        await this.captureEventScreenshot(runId, event.id);
         callbacks?.onEvent?.(event);
         break;
       }
@@ -517,33 +508,52 @@ export class AgentRunner {
   private createAndSaveEvent(
     runId: string,
     type: RunEvent['type'],
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    screenshotPath?: string
   ): RunEvent {
     const event: RunEvent = {
       id: uuid(),
       runId,
       type,
       data,
+      screenshotPath,
       timestamp: new Date().toISOString(),
     };
     createEvent(event);
     return event;
   }
 
-  private async captureEventScreenshot(runId: string, eventId: string): Promise<void> {
-    try {
-      const path = getScreenshotPath(runId, eventId);
-      await this.browser.captureScreenshot(path);
+  /**
+   * Create an event and capture a screenshot in one operation.
+   * The screenshot path is set on the event before it's returned.
+   */
+  private async createEventWithScreenshot(
+    runId: string,
+    type: RunEvent['type'],
+    data: Record<string, unknown>
+  ): Promise<RunEvent> {
+    const eventId = uuid();
+    const screenshotUrl = getScreenshotUrl(runId, eventId);
+    const screenshotPath = getScreenshotPath(runId, eventId);
 
-      // Update event with screenshot path (we need to get and update)
-      // For simplicity, we'll just update the event in DB
-      const screenshotUrl = getScreenshotUrl(runId, eventId);
-      const db = await import('../../db/index.js');
-      const stmt = db.getDb().prepare('UPDATE events SET screenshot_path = ? WHERE id = ?');
-      stmt.run(screenshotUrl, eventId);
+    // Capture screenshot first
+    try {
+      await this.browser.captureScreenshot(screenshotPath);
     } catch (error) {
       console.error('Failed to capture screenshot:', error);
     }
+
+    // Create event with screenshot path already set
+    const event: RunEvent = {
+      id: eventId,
+      runId,
+      type,
+      data,
+      screenshotPath: screenshotUrl,
+      timestamp: new Date().toISOString(),
+    };
+    createEvent(event);
+    return event;
   }
 
   private delay(ms: number): Promise<void> {

@@ -108,11 +108,20 @@ Respond in this exact JSON format:
 
 Action type guidelines:
 - "click": Click on a button, link, or interactive element
-- "type": Enter text into an input field (target = selector, value = text)
-- "scroll": Scroll down to see more content
-- "navigate": Go to a specific URL (target = URL)
+  - target: Use the EXACT text of the element (e.g., "Sign up", "Search", "Log in")
+  - Or use the CSS selector provided in parentheses (e.g., "#submit-btn", "button.primary")
+- "type": Enter text into an input field
+  - target: Use the placeholder text, label, or "search" for search boxes
+  - value: The text you want to type
+- "scroll": Scroll down to see more content (no target needed)
+- "navigate": Go to a specific URL (target = full URL starting with https://)
 - "done": Goal has been achieved
 - "stuck": Cannot proceed, something is blocking progress
+
+IMPORTANT for "type" actions:
+- For search boxes, use target: "search" or "Search Wikipedia" (the placeholder text)
+- For form fields, use the field label or placeholder as target
+- Do NOT use vague descriptions like "search box" or "input field"
 
 Remember your archetype constraints:
 - Reading style: ${archetype.constraints.readingStyle}
@@ -330,9 +339,14 @@ Focus on:
     }
 
     if (grouped.inputs.length) {
-      result += '\n\nInput Fields:\n';
+      result += '\n\nInput Fields (use the quoted text as target for "type" actions):\n';
       result += grouped.inputs
-        .map((i) => `  - ${i.attributes?.type || 'text'}: "${i.text}" (${i.selector})`)
+        .map((i) => {
+          const inputType = i.attributes?.type || 'text';
+          const placeholder = i.attributes?.placeholder;
+          // Show what to use as target
+          return `  - [${inputType}] target="${i.text}"${placeholder ? ` (placeholder: "${placeholder}")` : ''} (selector: ${i.selector})`;
+        })
         .join('\n');
     }
 

@@ -42,6 +42,13 @@ runsRouter.post('/', async (req: Request, res: Response) => {
     let archetype: AgentArchetype | undefined;
     let archetypeId: string;
 
+    // Device viewport mappings
+    const deviceViewports = {
+      mobile: { width: 390, height: 844 },
+      tablet: { width: 1024, height: 768 },
+      desktop: { width: 1440, height: 900 },
+    };
+
     if (body.customArchetype) {
       // Validate custom archetype input
       const custom = body.customArchetype;
@@ -64,10 +71,23 @@ runsRouter.post('/', async (req: Request, res: Response) => {
       archetypeId = archetype.id;
     } else {
       // Use preset archetype
-      archetype = getArchetype(body.archetypeId!);
-      if (!archetype) {
+      const baseArchetype = getArchetype(body.archetypeId!);
+      if (!baseArchetype) {
         res.status(400).json({ error: `Invalid archetype: ${body.archetypeId}` });
         return;
+      }
+
+      // Apply device override if specified
+      if (body.device && deviceViewports[body.device]) {
+        archetype = {
+          ...baseArchetype,
+          constraints: {
+            ...baseArchetype.constraints,
+            viewport: deviceViewports[body.device],
+          },
+        };
+      } else {
+        archetype = baseArchetype;
       }
       archetypeId = body.archetypeId!;
     }
@@ -78,6 +98,7 @@ runsRouter.post('/', async (req: Request, res: Response) => {
       url: body.url,
       goal: body.goal,
       archetypeId: archetypeId,
+      archetypeName: archetype.name, // Store the display name
       status: 'pending',
       createdAt: new Date().toISOString(),
     };

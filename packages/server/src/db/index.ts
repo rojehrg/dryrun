@@ -34,6 +34,7 @@ export function initDatabase(): void {
       url TEXT NOT NULL,
       goal TEXT NOT NULL,
       archetype_id TEXT NOT NULL,
+      archetype_name TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT NOT NULL,
       completed_at TEXT,
@@ -69,9 +70,18 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_friction_points_run_id ON friction_points(run_id);
   `);
 
-  // Migration: Add new columns to existing friction_points table if they don't exist
+  // Migration: Add new columns to existing tables if they don't exist
   // SQLite doesn't support IF NOT EXISTS for columns, so we check and add
   try {
+    // Migrate runs table
+    const runsTableInfo = db.prepare('PRAGMA table_info(runs)').all() as Array<{ name: string }>;
+    const runsColumns = new Set(runsTableInfo.map((col) => col.name));
+
+    if (!runsColumns.has('archetype_name')) {
+      db.exec('ALTER TABLE runs ADD COLUMN archetype_name TEXT');
+    }
+
+    // Migrate friction_points table
     const tableInfo = db.prepare('PRAGMA table_info(friction_points)').all() as Array<{
       name: string;
     }>;
@@ -102,10 +112,10 @@ export function initDatabase(): void {
 // Run operations
 export function createRun(run: Run): Run {
   const stmt = getDb().prepare(`
-    INSERT INTO runs (id, url, goal, archetype_id, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO runs (id, url, goal, archetype_id, archetype_name, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(run.id, run.url, run.goal, run.archetypeId, run.status, run.createdAt);
+  stmt.run(run.id, run.url, run.goal, run.archetypeId, run.archetypeName || null, run.status, run.createdAt);
   return run;
 }
 
@@ -195,6 +205,7 @@ interface RunRow {
   url: string;
   goal: string;
   archetype_id: string;
+  archetype_name: string | null;
   status: string;
   created_at: string;
   completed_at: string | null;
@@ -230,6 +241,7 @@ function rowToRun(row: RunRow): Run {
     url: row.url,
     goal: row.goal,
     archetypeId: row.archetype_id,
+    archetypeName: row.archetype_name || undefined,
     status: row.status as RunStatus,
     createdAt: row.created_at,
     completedAt: row.completed_at || undefined,

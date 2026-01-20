@@ -45,6 +45,7 @@ export interface Run {
   url: string;
   goal: string;
   archetypeId: string;
+  archetypeName?: string; // Display name for the archetype
   status: RunStatus;
   createdAt: string;
   completedAt?: string;
@@ -159,6 +160,9 @@ export interface CustomArchetypeInput {
   focusAreas?: FrictionCategory[];
 }
 
+// Device type for viewport selection
+export type DeviceType = 'mobile' | 'tablet' | 'desktop';
+
 // API Request/Response types
 export interface CreateRunRequest {
   url: string;
@@ -166,6 +170,8 @@ export interface CreateRunRequest {
   // Either use a preset archetype OR a custom one
   archetypeId?: string;
   customArchetype?: CustomArchetypeInput;
+  // Optional device override (for preset archetypes)
+  device?: DeviceType;
 }
 
 export interface RunResponse {
@@ -179,7 +185,13 @@ export interface PageElement {
   type: 'button' | 'link' | 'input' | 'text' | 'image' | 'form' | 'other';
   text: string;
   selector: string;
-  attributes?: Record<string, string>;
+  attributes?: {
+    href?: string;
+    type?: string;
+    name?: string;
+    placeholder?: string;
+    [key: string]: string | undefined;
+  };
   boundingBox?: {
     x: number;
     y: number;
