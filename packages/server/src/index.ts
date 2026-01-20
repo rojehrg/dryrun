@@ -40,9 +40,16 @@ async function main() {
 
   // In production, serve the frontend static files
   if (isProduction) {
-    const webDistPath = resolve(process.cwd(), '../web/dist');
+    // Try multiple possible paths for the frontend dist
+    const possiblePaths = [
+      resolve(process.cwd(), 'packages/web/dist'),  // Docker: /app/packages/web/dist
+      resolve(process.cwd(), '../web/dist'),         // Local from packages/server
+      resolve(__dirname, '../../web/dist'),          // Relative to compiled JS
+    ];
 
-    if (existsSync(webDistPath)) {
+    const webDistPath = possiblePaths.find(p => existsSync(p));
+
+    if (webDistPath) {
       app.use(express.static(webDistPath));
 
       // SPA fallback - serve index.html for all non-API routes
@@ -53,6 +60,8 @@ async function main() {
       });
 
       console.log('📦 Serving frontend from', webDistPath);
+    } else {
+      console.warn('⚠️ Frontend dist not found. Tried:', possiblePaths);
     }
   }
 
